@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models.invitation import Invitation
-from app.models.template import Template
 from app.models.user import User
 from datetime import datetime
 
@@ -11,7 +10,70 @@ invitations_bp = Blueprint('invitations', __name__)
 @invitations_bp.route('', methods=['POST'])
 @jwt_required()
 def create_invitation():
-    """Crear nueva invitación"""
+    """
+    Crear nueva invitacion
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - birthday_name
+            - birthday_date
+            - event_title
+            - event_date
+          properties:
+            birthday_name:
+              type: string
+              example: Maria Garcia
+            birthday_date:
+              type: string
+              example: "2005-03-15T00:00:00"
+            birthday_age:
+              type: integer
+              example: 18
+            event_title:
+              type: string
+              example: Cumpleanos de Maria
+            event_date:
+              type: string
+              example: "2024-03-16T19:00:00"
+            event_time:
+              type: string
+              example: "19:00"
+            event_location:
+              type: string
+            event_address:
+              type: string
+            organizer_name:
+              type: string
+            organizer_phone:
+              type: string
+            organizer_email:
+              type: string
+            dress_code:
+              type: string
+            special_notes:
+              type: string
+            rsvp_deadline:
+              type: string
+              example: "2024-03-12T23:59:59"
+    responses:
+      201:
+        description: Invitacion creada
+      400:
+        description: Datos invalidos
+      404:
+        description: Usuario no encontrado
+      500:
+        description: Error al crear invitacion
+    """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     
@@ -28,7 +90,6 @@ def create_invitation():
     try:
         invitation = Invitation(
             user_id=user_id,
-            template_id=data.get('template_id'),
             birthday_name=data['birthday_name'],
             birthday_date=datetime.fromisoformat(data['birthday_date']),
             birthday_age=data.get('birthday_age'),
@@ -42,7 +103,12 @@ def create_invitation():
             organizer_email=data.get('organizer_email'),
             dress_code=data.get('dress_code'),
             special_notes=data.get('special_notes'),
-            rsvp_deadline=datetime.fromisoformat(data['rsvp_deadline']) if data.get('rsvp_deadline') else None
+            rsvp_deadline=datetime.fromisoformat(data['rsvp_deadline']) if data.get('rsvp_deadline') else None,
+            template_key=data.get('template_key', 'classic_01'),
+            hero_image_url=data.get('hero_image_url'),
+            image_1_url=data.get('image_1_url'),
+            image_2_url=data.get('image_2_url'),
+            video_url=data.get('video_url'),
         )
         
         # Generar URL compartible
@@ -53,7 +119,7 @@ def create_invitation():
         
         return jsonify({
             'message': 'Invitación creada exitosamente',
-            'invitation': invitation.to_dict_with_template()
+            'invitation': invitation.to_dict()
         }), 201
     
     except ValueError as e:
@@ -65,7 +131,28 @@ def create_invitation():
 @invitations_bp.route('', methods=['GET'])
 @jwt_required()
 def list_invitations():
-    """Listar invitaciones del usuario actual"""
+    """
+    Listar invitaciones del usuario actual
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: query
+        name: page
+        type: integer
+        required: false
+        default: 1
+      - in: query
+        name: per_page
+        type: integer
+        required: false
+        default: 10
+    responses:
+      200:
+        description: Lista de invitaciones
+    """
     user_id = get_jwt_identity()
     
     page = request.args.get('page', 1, type=int)
@@ -74,7 +161,7 @@ def list_invitations():
     invitations = Invitation.query.filter_by(user_id=user_id).paginate(page=page, per_page=per_page)
     
     return jsonify({
-        'invitations': [inv.to_dict_with_template() for inv in invitations.items],
+        'invitations': [inv.to_dict() for inv in invitations.items],
         'total': invitations.total,
         'pages': invitations.pages,
         'current_page': page
@@ -83,19 +170,94 @@ def list_invitations():
 @invitations_bp.route('/<int:invitation_id>', methods=['GET'])
 @jwt_required()
 def get_invitation(invitation_id):
-    """Obtener detalles de una invitación"""
+    """
+    Obtener detalles de una invitacion
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: invitation_id
+        required: true
+        type: integer
+    responses:
+      200:
+        description: Invitacion encontrada
+      404:
+        description: Invitacion no encontrada
+    """
     user_id = get_jwt_identity()
     invitation = Invitation.query.get(invitation_id)
     
     if not invitation or invitation.user_id != user_id:
         return jsonify({'message': 'Invitación no encontrada'}), 404
     
-    return jsonify(invitation.to_dict_with_template()), 200
+    return jsonify(invitation.to_dict()), 200
 
 @invitations_bp.route('/<int:invitation_id>', methods=['PUT'])
 @jwt_required()
 def update_invitation(invitation_id):
-    """Actualizar invitación"""
+    """
+    Actualizar invitacion
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: invitation_id
+        required: true
+        type: integer
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            birthday_name:
+              type: string
+            birthday_age:
+              type: integer
+            event_title:
+              type: string
+            event_time:
+              type: string
+            event_location:
+              type: string
+            event_address:
+              type: string
+            organizer_name:
+              type: string
+            organizer_phone:
+              type: string
+            organizer_email:
+              type: string
+            dress_code:
+              type: string
+            special_notes:
+              type: string
+            birthday_date:
+              type: string
+              example: "2005-03-15T00:00:00"
+            event_date:
+              type: string
+              example: "2024-03-16T19:00:00"
+            rsvp_deadline:
+              type: string
+              example: "2024-03-12T23:59:59"
+    responses:
+      200:
+        description: Invitacion actualizada
+      400:
+        description: Datos invalidos
+      404:
+        description: Invitacion no encontrada
+      500:
+        description: Error al actualizar invitacion
+    """
     user_id = get_jwt_identity()
     invitation = Invitation.query.get(invitation_id)
     
@@ -109,7 +271,8 @@ def update_invitation(invitation_id):
         updateable_fields = [
             'birthday_name', 'birthday_age', 'event_title', 'event_time',
             'event_location', 'event_address', 'organizer_name', 'organizer_phone',
-            'organizer_email', 'dress_code', 'special_notes', 'template_id'
+            'organizer_email', 'dress_code', 'special_notes',
+            'template_key', 'hero_image_url', 'image_1_url', 'image_2_url', 'video_url'
         ]
         
         for field in updateable_fields:
@@ -129,7 +292,7 @@ def update_invitation(invitation_id):
         
         return jsonify({
             'message': 'Invitación actualizada exitosamente',
-            'invitation': invitation.to_dict_with_template()
+            'invitation': invitation.to_dict()
         }), 200
     
     except ValueError as e:
@@ -141,7 +304,24 @@ def update_invitation(invitation_id):
 @invitations_bp.route('/<int:invitation_id>', methods=['DELETE'])
 @jwt_required()
 def delete_invitation(invitation_id):
-    """Eliminar invitación"""
+    """
+    Eliminar invitacion
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: invitation_id
+        required: true
+        type: integer
+    responses:
+      200:
+        description: Invitacion eliminada
+      404:
+        description: Invitacion no encontrada
+    """
     user_id = get_jwt_identity()
     invitation = Invitation.query.get(invitation_id)
     
@@ -156,7 +336,24 @@ def delete_invitation(invitation_id):
 @invitations_bp.route('/<int:invitation_id>/publish', methods=['POST'])
 @jwt_required()
 def publish_invitation(invitation_id):
-    """Publicar invitación"""
+    """
+    Publicar invitacion
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: invitation_id
+        required: true
+        type: integer
+    responses:
+      200:
+        description: Invitacion publicada
+      404:
+        description: Invitacion no encontrada
+    """
     user_id = get_jwt_identity()
     invitation = Invitation.query.get(invitation_id)
     
@@ -169,6 +366,41 @@ def publish_invitation(invitation_id):
     
     return jsonify({
         'message': 'Invitación publicada exitosamente',
-        'invitation': invitation.to_dict_with_template(),
+        'invitation': invitation.to_dict(),
         'share_url': invitation.share_url
+    }), 200
+
+
+@invitations_bp.route('/<int:invitation_id>/guests', methods=['GET'])
+@jwt_required()
+def list_invitation_guests(invitation_id):
+    """Listar RSVPs (registro de asistencia) de una invitación del usuario.
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: path
+        name: invitation_id
+        required: true
+        type: integer
+    responses:
+      200:
+        description: Lista de RSVPs
+      404:
+        description: Invitacion no encontrada
+    """
+    user_id = get_jwt_identity()
+    invitation = Invitation.query.get(invitation_id)
+
+    if not invitation or invitation.user_id != user_id:
+        return jsonify({'message': 'Invitación no encontrada'}), 404
+
+    guests = [g.to_dict() for g in invitation.guests]
+
+    return jsonify({
+        'invitation_id': invitation.id,
+        'rsvp_stats': invitation.rsvp_stats(),
+        'guests': guests,
     }), 200
