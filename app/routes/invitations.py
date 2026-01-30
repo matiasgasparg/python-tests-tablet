@@ -7,6 +7,17 @@ from datetime import datetime
 
 invitations_bp = Blueprint('invitations', __name__)
 
+
+def _build_public_share_url(invitation: Invitation) -> str:
+    """Devuelve URL pública para compartir (absoluta si hay request context)."""
+    try:
+        # request.host_url incluye el trailing slash
+        base = request.host_url.rstrip('/')
+        return f"{base}/api/public/invitations/{invitation.unique_code}"
+    except Exception:
+        # Fallback: relativa
+        return f"/api/public/invitations/{invitation.unique_code}"
+
 @invitations_bp.route('', methods=['POST'])
 @jwt_required()
 def create_invitation():
@@ -111,8 +122,8 @@ def create_invitation():
             video_url=data.get('video_url'),
         )
         
-        # Generar URL compartible
-        invitation.share_url = f"/invitations/{invitation.unique_code}"
+        # Generar URL compartible (pública)
+        invitation.share_url = _build_public_share_url(invitation)
         
         db.session.add(invitation)
         db.session.commit()
@@ -127,6 +138,134 @@ def create_invitation():
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': f'Error al crear invitación: {str(e)}'}), 500
+
+@invitations_bp.route('/quick-create', methods=['POST'])
+@jwt_required()
+def quick_create_and_publish_invitation():
+    """Crear + publicar invitación en un solo paso (admin).
+
+    Devuelve un link listo para mandar por WhatsApp.
+    ---
+    tags:
+      - invitations
+    security:
+      - Bearer: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - birthday_name
+            - birthday_date
+            - event_title
+            - event_date
+          properties:
+            birthday_name:
+              type: string
+            birthday_date:
+              type: string
+              example: "2005-03-15T00:00:00"
+            birthday_age:
+              type: integer
+            event_title:
+              type: string
+            event_date:
+              type: string
+              example: "2026-02-10T19:00:00"
+            event_time:
+              type: string
+            event_location:
+              type: string
+            event_address:
+              type: string
+            organizer_name:
+              type: string
+            organizer_phone:
+              type: string
+            organizer_email:
+              type: string
+            dress_code:
+              type: string
+            special_notes:
+              type: string
+            rsvp_deadline:
+              type: string
+            template_key:
+              type: string
+              example: classic_01
+            hero_image_url:
+              type: string
+            image_1_url:
+              type: string
+            image_2_url:
+              type: string
+            video_url:
+              type: string
+    responses:
+      201:
+        description: Invitacion creada y publicada
+      400:
+        description: Datos invalidos
+    """
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+
+    if not user:
+        return jsonify({'message': 'Usuario no encontrado'}), 404
+
+    data = request.get_json() or {}
+
+    required_fields = ['birthday_name', 'birthday_date', 'event_title', 'event_date']
+    if not all(field in data for field in required_fields):
+        return jsonify({'message': f'Campos requeridos: {", ".join(required_fields)}'}), 400
+
+    try:
+        invitation = Invitation(
+            user_id=user_id,
+            birthday_name=data['birthday_name'],
+            birthday_date=datetime.fromisoformat(data['birthday_date']),
+            birthday_age=data.get('birthday_age'),
+            event_title=data['event_title'],
+            event_date=datetime.fromisoformat(data['event_date']),
+            event_time=data.get('event_time'),
+            event_location=data.get('event_location'),
+            event_address=data.get('event_address'),
+            organizer_name=data.get('organizer_name'),
+            organizer_phone=data.get('organizer_phone'),
+            organizer_email=data.get('organizer_email'),
+            dress_code=data.get('dress_code'),
+            special_notes=data.get('special_notes'),
+            rsvp_deadline=datetime.fromisoformat(data['rsvp_deadline']) if data.get('rsvp_deadline') else None,
+            template_key=data.get('template_key', 'classic_01'),
+            hero_image_url=data.get('hero_image_url'),
+            image_1_url=data.get('image_1_url'),
+            image_2_url=data.get('image_2_url'),
+            video_url=data.get('video_url'),
+            is_published=True,
+        )
+
+        db.session.add(invitation)
+        db.session.flush()  # para tener unique_code
+
+        invitation.share_url = _build_public_share_url(invitation)
+
+        db.session.commit()
+
+        return jsonify({
+            'message': 'Invitación creada y publicada',
+            'invitation': invitation.to_dict(),
+            'share_url': invitation.share_url,
+        }), 201
+
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'message': f'Formato de fecha inválido: {str(e)}'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': f'Error al crear invitación: {str(e)}'}), 500
+
 
 @invitations_bp.route('', methods=['GET'])
 @jwt_required()
