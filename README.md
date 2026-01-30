@@ -44,6 +44,7 @@ python run.py
 La API estará disponible en `http://localhost:5000`
 
 ### Endpoints clave (MVP WhatsApp)
+- Login admin: `POST /api/auth/login` (usa `username` + `password`)
 - Public landing: `GET /api/public/invitations/<code>`
 - RSVP: `POST /api/public/invitations/<code>/rsvp`
 - Registro (dueño, con JWT): `GET /api/invitations/<id>/guests`

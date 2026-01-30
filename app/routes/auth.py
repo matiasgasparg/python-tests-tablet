@@ -8,7 +8,15 @@ auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
-    """Registrar nuevo usuario (administrador)"""
+    """Registrar nuevo usuario (administrador).
+
+    Por defecto está deshabilitado para este proyecto (solo admin). Para habilitar:
+    setear ALLOW_REGISTER=true en el entorno.
+    """
+    import os
+    if os.environ.get('ALLOW_REGISTER', 'false').lower() not in ['1', 'true', 'yes']:
+        return jsonify({'message': 'Registro deshabilitado'}), 403
+
     data = request.get_json()
     
     # Validar datos requeridos
@@ -38,13 +46,20 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """Iniciar sesión"""
+    """Iniciar sesión.
+
+    Acepta `email` o `username`.
+    """
     data = request.get_json()
-    
-    if not data or not data.get('email') or not data.get('password'):
-        return jsonify({'message': 'Email y password son requeridos'}), 400
-    
-    user = User.query.filter_by(email=data['email']).first()
+
+    identifier = None
+    if data:
+        identifier = data.get('email') or data.get('username')
+
+    if not data or not identifier or not data.get('password'):
+        return jsonify({'message': 'email/username y password son requeridos'}), 400
+
+    user = User.query.filter_by(email=identifier).first()
     
     if not user or not user.check_password(data['password']):
         return jsonify({'message': 'Email o contraseña incorrectos'}), 401
